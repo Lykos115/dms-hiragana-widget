@@ -51,15 +51,29 @@ Reload after editing the QML: `dms ipc call plugins reload hiraganaWidget`.
 *Play* in the popout (or middle click on the desktop widget) says the kana
 with the *Text-to-speech command*, `{text}` replaced by the kana. Default is
 `espeak-ng -v ja -s 110 {text}` — `sudo pacman -S espeak-ng`. Its Japanese
-voice is robotic but the single syllables are clear. For a natural voice
-install [piper](https://github.com/rhasspy/piper) with a Japanese model and
-set the command to a small wrapper, e.g. `~/.local/bin/say-ja {text}` with
+voice is robotic but the single syllables are clear.
+
+For a natural voice use [Piper](https://github.com/OHF-Voice/piper1-gpl)
+(the maintained successor of rhasspy/piper) with its Japanese voice:
 
 ```sh
-#!/bin/sh
-echo "$1" | piper --model ~/piper/ja_JP-test-medium.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -
+pipx install "piper-tts[http]"          # or: pip install --user "piper-tts[http]"
+python3 -m piper.download_voices ja_JA-hi_fi_captain-medium --data-dir ~/.local/share/piper
+install -Dm755 ~/dms-hiragana-widget/say-ja ~/.local/bin/say-ja
 ```
 
+and set the *Text-to-speech command* to `say-ja {text}`. The `say-ja` script
+in this repo runs `piper -m ja_JA-hi_fi_captain-medium -- <text>`, which plays
+through `ffplay` (`sudo pacman -S ffmpeg`). The CLI reloads the model on every
+call, so there is about a second of delay; for instant playback start Piper's
+server once, e.g. from niri's `spawn-at-startup`:
+
+```sh
+python3 -m piper.http_server -m ja_JA-hi_fi_captain-medium --data-dir ~/.local/share/piper
+```
+
+`say-ja` uses the server whenever it is running. `PIPER_VOICE`,
+`PIPER_DATA_DIR` and `PIPER_PORT` override its defaults.
 The command is split on whitespace and run without a shell, so `{text}` must
 be a whole argument.
 
@@ -71,6 +85,7 @@ once even with several pills and widgets.
 
 | file | role |
 |---|---|
+| `say-ja` | Piper text-to-speech wrapper, see Audio |
 | `HiraganaWidget/plugin.json` | composite manifest, `widget` + `desktop` surfaces |
 | `HiraganaWidget/HiraganaDeck.qml` | loads `data/kana.json`, filters, rotates on a timer, speaks |
 | `HiraganaWidget/HiraganaBarWidget.qml` | `PluginComponent`: pill + popout |

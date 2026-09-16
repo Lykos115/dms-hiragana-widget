@@ -77,7 +77,7 @@ PluginSettings {
     StringSetting {
         settingKey: "ttsCommand"
         label: "Text-to-speech command"
-        description: "{text} is replaced by the kana. espeak-ng: pacman -S espeak-ng. See the README for piper"
+        description: "{text} is replaced by the kana. espeak-ng: pacman -S espeak-ng. Natural voice: say-ja {text} with Piper, see README"
         placeholder: "espeak-ng -v ja -s 110 {text}"
         defaultValue: ""
     }
