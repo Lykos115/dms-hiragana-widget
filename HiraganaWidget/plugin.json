@@ -1,0 +1,17 @@
+{
+    "id": "hiraganaWidget",
+    "name": "Hiragana",
+    "description": "Rotates through the hiragana (and optionally katakana) with romaji. Bar pill with a popout card, and a desktop widget. Speaks the kana aloud.",
+    "version": "0.1.0",
+    "author": "lykos",
+    "type": "composite",
+    "capabilities": ["dankbar-widget", "desktop-widget", "japanese", "study"],
+    "icon": "translate",
+    "components": {
+        "widget": "./HiraganaBarWidget.qml",
+        "desktop": "./HiraganaDesktopWidget.qml"
+    },
+    "settings": "./HiraganaSettings.qml",
+    "requires_dms": ">=1.5.0",
+    "permissions": ["settings_read", "settings_write"]
+}
