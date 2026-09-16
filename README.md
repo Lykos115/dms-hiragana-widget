@@ -66,8 +66,10 @@ say-ja テスト                            # try it
 Already installed without the `ja` extra (error `No module named
 'pyopenjtalk'`)? Add it: `pipx inject piper-tts pyopenjtalk-plus`.
 
-and set the *Text-to-speech command* to `say-ja {text}`. `say-ja` plays the clip with `pw-play`, `paplay`, `mpv` or `ffplay`, whichever exists;
-through `ffplay` (`sudo pacman -S ffmpeg`). The CLI reloads the model on
+and set the *Text-to-speech command* to `say-ja {text}`. `say-ja` plays the clip
+with `pw-play`, `paplay`, `mpv` or `ffplay`, whichever exists.
+`PIPER_SPEAKER=male` and `PIPER_LENGTH_SCALE=1.2` (slower) can be set in
+`~/.config/environment.d/say-ja.conf`. The CLI reloads the model on
 every call, about a second of delay; for instant playback run `say-ja server`
 once, e.g. from niri's `spawn-at-startup`, and `say-ja` uses it automatically.
 `say-ja setup` / `say-ja server` run Piper's modules with the Python that owns
