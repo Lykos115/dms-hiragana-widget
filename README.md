@@ -74,6 +74,13 @@ once, e.g. from niri's `spawn-at-startup`, and `say-ja` uses it automatically.
 the `piper` command, so `python3 -m piper ...` is never needed (with pipx it
 fails: the system Python cannot see the package). `PIPER_VOICE`,
 `PIPER_DATA_DIR` and `PIPER_PORT` override the defaults.
+
+No sound from the widget? `say-ja` adds `~/.local/bin` to its own PATH and
+logs every call to `~/.cache/say-ja.log`, so: (1) `say-ja テスト` in a
+terminal must work first; (2) click *Play* in the popout (or middle-click the
+desktop widget), *Speak automatically* is off by default; (3) if the log stays
+empty DMS did not find the script, set the command to the full path
+`/home/YOU/.local/bin/say-ja {text}`; (4) otherwise the log says what failed.
 The command is split on whitespace and run without a shell, so `{text}` must
 be a whole argument.
 

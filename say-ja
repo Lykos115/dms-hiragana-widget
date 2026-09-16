@@ -1,7 +1,7 @@
 #!/bin/sh
 # say-ja: speak Japanese text with Piper (https://github.com/OHF-Voice/piper1-gpl).
 #
-#   pipx install "piper-tts[http,ja]"  # ja = Japanese phonemizer (OpenJTalk), http = server
+#   pipx install "piper-tts[http]"     # Arch: pipx keeps it out of pacman's Python
 #   install -Dm755 say-ja ~/.local/bin/say-ja
 #   say-ja setup                       # downloads the ja_JA-hi_fi_captain-medium voice
 #   say-ja テスト                       # try it (plays through ffplay: pacman -S ffmpeg)
@@ -20,7 +20,7 @@ DATA="${PIPER_DATA_DIR:-$HOME/.local/share/piper}"
 PORT="${PIPER_PORT:-5000}"
 
 piper_python() {
-    bin=$(command -v piper) || { echo "say-ja: 'piper' not found, run: pipx install \"piper-tts[http,ja]\"" >&2; exit 1; }
+    bin=$(command -v piper) || { echo "say-ja: 'piper' not found, run: pipx install \"piper-tts[http]\"" >&2; exit 1; }
     # pipx launchers are scripts whose shebang points into the venv; symlinked venv scripts resolve via readlink
     py=$(sed -n '1s/^#!//p' "$bin" | cut -d' ' -f1)
     [ -x "$py" ] || py="$(dirname "$(readlink -f "$bin")")/python"
