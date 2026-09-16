@@ -21,7 +21,9 @@ PORT="${PIPER_PORT:-5000}"
 
 piper_python() {
     bin=$(command -v piper) || { echo "say-ja: 'piper' not found, run: pipx install \"piper-tts[http]\"" >&2; exit 1; }
-    py="$(dirname "$(readlink -f "$bin")")/python"
+    # pipx launchers are scripts whose shebang points into the venv; symlinked venv scripts resolve via readlink
+    py=$(sed -n '1s/^#!//p' "$bin" | cut -d' ' -f1)
+    [ -x "$py" ] || py="$(dirname "$(readlink -f "$bin")")/python"
     [ -x "$py" ] || py=python3
     echo "$py"
 }
