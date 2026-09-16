@@ -1,18 +1,41 @@
 #!/bin/sh
 # say-ja: speak Japanese text with Piper (https://github.com/OHF-Voice/piper1-gpl).
-#   pipx install "piper-tts[http]"          # or: pip install --user "piper-tts[http]"
-#   python3 -m piper.download_voices ja_JA-hi_fi_captain-medium --data-dir ~/.local/share/piper
+#
+#   pipx install "piper-tts[http]"     # Arch: pipx keeps it out of pacman's Python
 #   install -Dm755 say-ja ~/.local/bin/say-ja
+#   say-ja setup                       # downloads the ja_JA-hi_fi_captain-medium voice
+#   say-ja テスト                       # try it (plays through ffplay: pacman -S ffmpeg)
+#
 # Then set the plugin's text-to-speech command to:  say-ja {text}
 #
 # The CLI reloads the model on every call (about a second). For instant
-# playback start the server once (e.g. niri spawn-at-startup) and this script
-# will use it automatically:
-#   python3 -m piper.http_server -m ja_JA-hi_fi_captain-medium --data-dir ~/.local/share/piper
+# playback run `say-ja server` once (e.g. niri spawn-at-startup) and this
+# script uses it automatically.
+#
+# `setup` and `server` run Piper's modules with the Python that owns the
+# `piper` command (pipx venv, virtualenv or system), so `python3 -m piper...`
+# is never needed.
 VOICE="${PIPER_VOICE:-ja_JA-hi_fi_captain-medium}"
 DATA="${PIPER_DATA_DIR:-$HOME/.local/share/piper}"
 PORT="${PIPER_PORT:-5000}"
-[ -n "$1" ] || exit 0
+
+piper_python() {
+    bin=$(command -v piper) || { echo "say-ja: 'piper' not found, run: pipx install \"piper-tts[http]\"" >&2; exit 1; }
+    py="$(dirname "$(readlink -f "$bin")")/python"
+    [ -x "$py" ] || py=python3
+    echo "$py"
+}
+
+case "$1" in
+    setup)
+        mkdir -p "$DATA"
+        exec "$(piper_python)" -m piper.download_voices "$VOICE" --data-dir "$DATA" ;;
+    server)
+        exec "$(piper_python)" -m piper.http_server -m "$VOICE" --data-dir "$DATA" --port "$PORT" ;;
+    "")
+        exit 0 ;;
+esac
+
 if curl -sf "http://localhost:$PORT/info" >/dev/null 2>&1; then
     json=$(printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read().strip()}))')
     curl -sf -X POST -H 'Content-Type: application/json' -d "$json" "http://localhost:$PORT/synthesize" \

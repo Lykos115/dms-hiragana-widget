@@ -57,23 +57,20 @@ For a natural voice use [Piper](https://github.com/OHF-Voice/piper1-gpl)
 (the maintained successor of rhasspy/piper) with its Japanese voice:
 
 ```sh
-pipx install "piper-tts[http]"          # or: pip install --user "piper-tts[http]"
-python3 -m piper.download_voices ja_JA-hi_fi_captain-medium --data-dir ~/.local/share/piper
+pipx install "piper-tts[http]"          # Arch: pipx keeps it out of pacman's Python
 install -Dm755 ~/dms-hiragana-widget/say-ja ~/.local/bin/say-ja
+say-ja setup                            # downloads the ja_JA-hi_fi_captain-medium voice
+say-ja テスト                            # try it
 ```
 
-and set the *Text-to-speech command* to `say-ja {text}`. The `say-ja` script
-in this repo runs `piper -m ja_JA-hi_fi_captain-medium -- <text>`, which plays
-through `ffplay` (`sudo pacman -S ffmpeg`). The CLI reloads the model on every
-call, so there is about a second of delay; for instant playback start Piper's
-server once, e.g. from niri's `spawn-at-startup`:
-
-```sh
-python3 -m piper.http_server -m ja_JA-hi_fi_captain-medium --data-dir ~/.local/share/piper
-```
-
-`say-ja` uses the server whenever it is running. `PIPER_VOICE`,
-`PIPER_DATA_DIR` and `PIPER_PORT` override its defaults.
+and set the *Text-to-speech command* to `say-ja {text}`. `say-ja` plays
+through `ffplay` (`sudo pacman -S ffmpeg`). The CLI reloads the model on
+every call, about a second of delay; for instant playback run `say-ja server`
+once, e.g. from niri's `spawn-at-startup`, and `say-ja` uses it automatically.
+`say-ja setup` / `say-ja server` run Piper's modules with the Python that owns
+the `piper` command, so `python3 -m piper ...` is never needed (with pipx it
+fails: the system Python cannot see the package). `PIPER_VOICE`,
+`PIPER_DATA_DIR` and `PIPER_PORT` override the defaults.
 The command is split on whitespace and run without a shell, so `{text}` must
 be a whole argument.
 
