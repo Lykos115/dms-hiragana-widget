@@ -4,8 +4,8 @@ import Quickshell.Io
 import qs.Services
 
 // Non-visual helper shared by the bar widget and the desktop widget.
-// Loads data/jlab/sentences.json (written by import-jlab), rotates on a
-// timer and plays the current sentence's clip on request.
+// Loads data/kana.json, keeps the hiragana (plus katakana if enabled),
+// rotates on a timer and plays the kana's clip on request.
 Item {
     id: deck
     visible: false
@@ -15,48 +15,47 @@ Item {
     // plugin settings object (PluginComponent.pluginData / DesktopPluginComponent.pluginData)
     property var settings: ({})
 
-    readonly property int intervalSeconds: Math.max(3, settings.interval ?? 30)
-    readonly property bool shuffleOrder: settings.shuffle ?? false
-    // only the first N sentences in course order (0 = all); the course gets harder as it goes
-    readonly property int maxSentences: Math.max(0, settings.maxSentences ?? 0)
-    // keep every bar pill / desktop widget (all monitors) on the same sentence
+    readonly property bool showHiragana: settings.showHiragana ?? true
+    readonly property bool showKatakana: settings.showKatakana ?? false
+    // ゃゅょ combinations (きゃ, しゅ, ...) and voiced kana (が, ぱ, ...)
+    readonly property bool showCombos: settings.showCombos ?? true
+    readonly property bool showVoiced: settings.showVoiced ?? true
+    readonly property int intervalSeconds: Math.max(3, settings.interval ?? 20)
+    readonly property bool shuffleOrder: settings.shuffle ?? true
+    // keep every bar pill / desktop widget (all monitors) on the same kana
     readonly property bool syncInstances: settings.syncInstances ?? true
     readonly property bool autoPlay: settings.autoPlay ?? false
-    // Audio: the deck's clip in data/jlab/media/ played with playerCommand;
-    // empty = pick pw-play / paplay / mpv / ffplay at run time.
+    // Audio: recorded clips in data/audio/<romaji>.wav (see gen-audio) played
+    // with playerCommand; empty = pick pw-play / paplay / mpv / ffplay at run time.
     readonly property string playerCommand: String(settings.playerCommand ?? "").trim()
-    readonly property string pluginId: "jlabWidget"
+    readonly property string pluginId: "hiraganaWidget"
     property double lastStamp: 0
 
     // current item
-    property string main: "…"        // sentence as written (kanji and kana)
-    property string reading: ""      // hiragana, words separated by spaces
-    property string romaji: ""
-    property string meaning: ""      // English
-    property string source: ""       // the anime it is from
-    property string audio: ""        // "media/<n>.mp3", relative to data/jlab
+    property string main: "…"
+    property string reading: ""    // romaji
+    property string tag: ""        // "hiragana" / "katakana"
     property bool ready: false
-    readonly property bool hasAudio: audio !== ""
+    readonly property bool hasAudio: main !== "" && main !== "…" && main !== "—"
 
     // raw data
-    property var sentences: []
+    property var kana: []
     property var items: []
     property int pos: -1
 
     readonly property string dataDir: Qt.resolvedUrl("data").toString().replace(/^file:\/\//, "")
 
     FileView {
-        path: deck.dataDir + "/jlab/sentences.json"
-        onLoaded: { deck.sentences = JSON.parse(text()); deck.rebuild(); }
-        onLoadFailed: err => {
-            console.warn("jlabWidget: cannot read", path, err, "- run import-jlab first");
-            deck.main = "no sentences";
-            deck.reading = "run import-jlab (see README)";
-        }
+        path: deck.dataDir + "/kana.json"
+        onLoaded: { deck.kana = JSON.parse(text()); deck.rebuild(); }
+        onLoadFailed: err => console.warn("hiraganaWidget: cannot read", path, err)
     }
 
+    onShowKatakanaChanged: rebuild()
+    onShowHiraganaChanged: rebuild()
+    onShowCombosChanged: rebuild()
+    onShowVoicedChanged: rebuild()
     onShuffleOrderChanged: rebuild()
-    onMaxSentencesChanged: rebuild()
 
     Connections {
         target: PluginService
@@ -67,8 +66,7 @@ Item {
     }
 
     function setCurrent(it) {
-        main = it.main; reading = it.reading; romaji = it.romaji;
-        meaning = it.meaning; source = it.source; audio = it.audio;
+        main = it.main; reading = it.reading; tag = it.tag;
     }
 
     // adopt the shared item if another instance published a newer one
@@ -99,26 +97,30 @@ Item {
         return a;
     }
 
+    function isCombo(k) {
+        return k.length > 1 && /[ゃゅょャュョ]$/.test(k);
+    }
+
+    function isVoiced(k) {
+        // dakuten / handakuten rows
+        return /^[がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポ]/.test(k);
+    }
+
     function rebuild() {
         const all = [];
-        const limit = maxSentences > 0 ? Math.min(maxSentences, sentences.length) : sentences.length;
-        for (let i = 0; i < limit; i++) {
-            const s = sentences[i];
-            all.push({
-                main: s.sentence || s.hiragana || "",
-                reading: s.hiragana || "",
-                romaji: s.romaji || "",
-                meaning: s.meaning || "",
-                source: s.source || "",
-                audio: s.audio || ""
-            });
+        for (const k of kana) {
+            if (k.set === "katakana" && !showKatakana) continue;
+            if (k.set === "hiragana" && !showHiragana) continue;
+            if (!showCombos && isCombo(k.kana)) continue;
+            if (!showVoiced && isVoiced(k.kana)) continue;
+            all.push({ main: k.kana, reading: k.romaji, tag: k.set });
         }
-        // sentences.json is in course order, which is the sequential order
+        // data is in gojūon order, which is the sequential order
         items = shuffleOrder ? shuffle(all) : all;
         pos = -1;
         ready = all.length > 0;
         if (ready) next(false);
-        else { main = "no sentences"; reading = "run import-jlab (see README)"; romaji = ""; meaning = ""; source = ""; audio = ""; }
+        else { main = "—"; reading = "nothing selected"; tag = ""; }
     }
 
     function pick() {
@@ -128,7 +130,7 @@ Item {
     }
 
     // force=true: user clicked, always advance. force=false: timer tick; if another
-    // instance already advanced within this interval, adopt its sentence instead.
+    // instance already advanced within this interval, adopt its kana instead.
     function next(force) {
         if (!ready) return;
         if (syncInstances && !force) {
@@ -145,8 +147,7 @@ Item {
         if (syncInstances) {
             lastStamp = Date.now();
             PluginService.setGlobalVar(pluginId, "current", {
-                main: it.main, reading: it.reading, romaji: it.romaji, meaning: it.meaning,
-                source: it.source, audio: it.audio, stamp: lastStamp
+                main: it.main, reading: it.reading, tag: it.tag, stamp: lastStamp
             });
         }
         // only the instance that picked the item plays it, so synced instances do not all talk at once
@@ -160,20 +161,20 @@ Item {
         return cmd.split(/\s+/).filter(t => t.length > 0).map(t => t === key ? value : t);
     }
 
-    readonly property string clipFile: dataDir + "/jlab/" + audio
+    readonly property string clipFile: dataDir + "/audio/" + reading + ".wav"
 
-    // first player found on PATH; each one drains the buffer before exiting.
-    // Every call is logged to ~/.cache/jlab-widget.log because stderr goes
-    // nowhere under DMS.
+    // first player found on PATH; each one drains the buffer before exiting,
+    // so a 0.4 s clip is not cut short. Every call is logged to
+    // ~/.cache/hiragana-widget.log because stderr goes nowhere under DMS.
     readonly property string autoPlayer:
-        'f="$1"; log="${XDG_CACHE_HOME:-$HOME/.cache}/jlab-widget.log"; ' +
+        'f="$1"; log="${XDG_CACHE_HOME:-$HOME/.cache}/hiragana-widget.log"; ' +
         'mkdir -p "$(dirname "$log")"; exec 2>>"$log"; ' +
         'echo "$(date "+%F %T") play $f (PATH=$PATH)" >&2; ' +
         '[ -f "$f" ] || { echo "  clip not found" >&2; exit 1; }; ' +
-        'command -v mpv    >/dev/null && { echo "  using mpv" >&2; exec mpv --no-video --really-quiet "$f"; }; ' +
-        'command -v ffplay >/dev/null && { echo "  using ffplay" >&2; exec ffplay -nodisp -autoexit -loglevel quiet "$f"; }; ' +
         'for p in pw-play paplay; do command -v "$p" >/dev/null && { echo "  using $p" >&2; exec "$p" "$f"; }; done; ' +
-        'echo "  no audio player found (mpv, ffplay, pw-play, paplay)" >&2; exit 1'
+        'command -v mpv    >/dev/null && { echo "  using mpv" >&2; exec mpv --no-video --really-quiet "$f"; }; ' +
+        'command -v ffplay >/dev/null && { echo "  using ffplay" >&2; exec ffplay -nodisp -autoexit -loglevel quiet -af apad=pad_dur=0.3 "$f"; }; ' +
+        'echo "  no audio player found (pw-play, paplay, mpv, ffplay)" >&2; exit 1'
 
     function play() {
         if (!hasAudio) return;
