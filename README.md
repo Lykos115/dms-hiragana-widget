@@ -5,9 +5,11 @@ kana; katakana can be switched on too) with romaji, rendered by Dank Material
 Shell itself. One plugin, two surfaces (DMS ≥ 1.5.0 composite plugin):
 
 * **Bar pill** — the current kana (plus romaji) in the DankBar. Left click
-  opens a popout card with the kana, its romaji and *Play* / *Next* buttons.
-  Right click skips to the next kana. With *open popouts on hover* enabled
-  in the bar settings the card opens on hover.
+  opens a popout with two tabs: *Card* (the kana, its romaji and *Play* /
+  *Next* buttons) and *Chart* (the whole gojūon table; tap a kana to make it
+  the current one and hear it). Right click skips to the next kana. With
+  *open popouts on hover* enabled in the bar settings the popout opens on
+  hover.
 * **Desktop widget** — text on the wallpaper layer, fixed where you put it.
   Right-click drag moves it, the corner handle resizes it, left click skips
   to the next kana, middle click plays it.
@@ -43,7 +45,7 @@ Reload after editing the QML: `dms ipc call plugins reload hiraganaWidget`.
 |---|---|
 | Content | hiragana, katakana too, voiced kana, combination kana, **seconds per kana** (3–600), random / gojūon order, same kana everywhere, Japanese font |
 | Audio | play automatically, audio player command |
-| Bar pill & popout | romaji in the pill, popout width, popout kana size |
+| Bar pill & popout | romaji in the pill, open the popout on the chart, popout width, popout kana size, chart height |
 | Desktop widget | kana size, show romaji, show set tag, text outline, background opacity |
 
 ## Audio
@@ -93,8 +95,8 @@ JTalk are steadier but their consonants are weak (21 and 30 of 104).
 |---|---|
 | `gen-audio` | builds `data/audio/*.wav` from the Learn Japanese Adventure recordings, see Audio |
 | `HiraganaWidget/plugin.json` | composite manifest, `widget` + `desktop` surfaces |
-| `HiraganaWidget/HiraganaDeck.qml` | loads `data/kana.json`, filters, rotates on a timer, plays the clip |
-| `HiraganaWidget/HiraganaBarWidget.qml` | `PluginComponent`: pill + popout |
+| `HiraganaWidget/HiraganaDeck.qml` | loads `data/kana.json`, filters, rotates on a timer, lays out the chart, plays the clip |
+| `HiraganaWidget/HiraganaBarWidget.qml` | `PluginComponent`: pill + popout (Card / Chart tabs) |
 | `HiraganaWidget/HiraganaDesktopWidget.qml` | `DesktopPluginComponent` |
 | `HiraganaWidget/HiraganaSettings.qml` | settings UI (`PluginSettings`) |
 | `HiraganaWidget/data/kana.json` | hiragana + katakana with romaji, in gojūon order |

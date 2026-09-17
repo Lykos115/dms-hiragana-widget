@@ -91,6 +91,12 @@ PluginSettings {
     }
 
     ToggleSetting { settingKey: "barRomaji"; label: "Romaji in the pill"; defaultValue: true }
+    ToggleSetting {
+        settingKey: "openOnChart"
+        label: "Open the popout on the chart"
+        description: "Show the full kana table first instead of the current kana's card"
+        defaultValue: false
+    }
 
     SliderSetting {
         settingKey: "popoutWidth"
@@ -107,6 +113,16 @@ PluginSettings {
         defaultValue: 96
         minimum: 32
         maximum: 200
+        unit: "px"
+    }
+
+    SliderSetting {
+        settingKey: "chartMaxHeight"
+        label: "Chart height"
+        description: "The chart scrolls when the table is taller than this"
+        defaultValue: 480
+        minimum: 200
+        maximum: 1200
         unit: "px"
     }
 
