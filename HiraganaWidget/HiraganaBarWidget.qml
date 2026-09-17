@@ -238,7 +238,7 @@ PluginComponent {
 
                 readonly property real cellGap: 3
                 readonly property real innerW: width - leftPadding - rightPadding
-                readonly property real cellSize: Math.floor((innerW - cellGap * 4) / 5)
+                readonly property real cellSize: Math.floor((innerW - cellGap * (deck.chartColumns - 1)) / deck.chartColumns)
 
                 // hiragana / katakana switch, only when katakana is enabled in the settings
                 Row {
@@ -280,69 +280,62 @@ PluginComponent {
                 // the table is ~27 rows, taller than most screens: scroll it
                 DankFlickable {
                     width: chart.innerW
-                    height: Math.min(chartColumn.implicitHeight, root.chartMaxHeight)
+                    height: Math.min(chartGrid.implicitHeight, root.chartMaxHeight)
                     contentWidth: width
-                    contentHeight: chartColumn.implicitHeight
+                    contentHeight: chartGrid.implicitHeight
                     clip: true
 
-                    Column {
-                        id: chartColumn
+                    Grid {
+                        id: chartGrid
                         width: parent.width
-                        spacing: chart.cellGap
+                        columns: deck.chartColumns
+                        columnSpacing: chart.cellGap
+                        rowSpacing: chart.cellGap
 
                         Repeater {
-                            model: deck.kana.length > 0 ? deck.chartRows(card.chartSet) : []
+                            model: deck.kana.length > 0 ? deck.chartCells(card.chartSet) : []
 
-                            Row {
-                                id: chartRow
+                            Rectangle {
+                                id: cell
                                 required property var modelData
-                                spacing: chart.cellGap
+                                readonly property bool present: modelData.main !== ""
+                                readonly property bool current: present && modelData.main === deck.main && modelData.tag === deck.tag
+                                width: chart.cellSize
+                                height: chart.cellSize
+                                radius: Theme.cornerRadius / 2
+                                color: !present ? "transparent"
+                                     : current ? Theme.primary
+                                     : cellArea.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
 
-                                Repeater {
-                                    model: chartRow.modelData
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 0
+                                    visible: cell.present
 
-                                    Rectangle {
-                                        required property var modelData
-                                        readonly property bool present: modelData.main !== ""
-                                        readonly property bool current: present && modelData.main === deck.main && modelData.tag === deck.tag
-                                        width: chart.cellSize
-                                        height: chart.cellSize
-                                        radius: Theme.cornerRadius / 2
-                                        color: !present ? "transparent"
-                                             : current ? Theme.primary
-                                             : cellArea.containsMouse ? Theme.surfaceContainerHighest : Theme.surfaceContainerHigh
-
-                                        Column {
-                                            anchors.centerIn: parent
-                                            spacing: 0
-                                            visible: present
-
-                                            StyledText {
-                                                text: modelData.main
-                                                font.family: root.fontFamily
-                                                font.pixelSize: chart.cellSize * (modelData.main.length > 1 ? 0.36 : 0.5)
-                                                font.weight: Font.Bold
-                                                color: current ? Theme.primaryText : Theme.surfaceText
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                            }
-
-                                            StyledText {
-                                                text: modelData.reading
-                                                font.pixelSize: Math.max(8, chart.cellSize * 0.22)
-                                                color: current ? Theme.primaryText : Theme.surfaceVariantText
-                                                anchors.horizontalCenter: parent.horizontalCenter
-                                            }
-                                        }
-
-                                        MouseArea {
-                                            id: cellArea
-                                            anchors.fill: parent
-                                            enabled: present
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: deck.show(modelData)
-                                        }
+                                    StyledText {
+                                        text: cell.modelData.main
+                                        font.family: root.fontFamily
+                                        font.pixelSize: chart.cellSize * (cell.modelData.main.length > 1 ? 0.36 : 0.5)
+                                        font.weight: Font.Bold
+                                        color: cell.current ? Theme.primaryText : Theme.surfaceText
+                                        anchors.horizontalCenter: parent.horizontalCenter
                                     }
+
+                                    StyledText {
+                                        text: cell.modelData.reading
+                                        font.pixelSize: Math.max(8, chart.cellSize * 0.22)
+                                        color: cell.current ? Theme.primaryText : Theme.surfaceVariantText
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: cellArea
+                                    anchors.fill: parent
+                                    enabled: cell.present
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: deck.show(cell.modelData)
                                 }
                             }
                         }

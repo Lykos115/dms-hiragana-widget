@@ -169,26 +169,30 @@ Item {
     }
 
     // --- chart -------------------------------------------------------------
-    // The whole set laid out as the gojūon table: rows of 5 (a i u e o), the
-    // ya row in columns a/u/o, the wa row in a/o, ん alone, then the voiced
-    // rows and the ゃゅょ combinations (3 per row). Empty cells have main "".
-    // kana.json lists the set in exactly this order.
-    function chartRows(set) {
+    // The whole set as the gojūon table, flattened for a 5-column Grid: rows
+    // of a i u e o, the ya row in columns a/u/o, the wa row in a/o, ん alone,
+    // then the voiced rows and the ゃゅょ combinations (3 per row). Empty
+    // cells have main "". kana.json lists each set in exactly this order.
+    readonly property int chartColumns: 5
+
+    function chartCells(set) {
         const list = kana.filter(k => k.set === set)
                          .map(k => ({ main: k.kana, reading: k.romaji, tag: k.set }));
-        const rows = [];
-        let i = 0;
-        const take = n => list.slice(i, i += n);
         const gap = { main: "", reading: "", tag: "" };
-        const pad = cells => { while (cells.length < 5) cells.push(gap); return cells; };
-        for (let r = 0; r < 7 && i < list.length; r++) rows.push(pad(take(5)));          // あ か さ た な は ま
-        if (i < list.length) { const y = take(3); rows.push([y[0], gap, y[1], gap, y[2]]); } // や
-        if (i < list.length) rows.push(pad(take(5)));                                     // ら
-        if (i < list.length) { const w = take(2); rows.push([w[0], gap, gap, gap, w[1]]); } // わ
-        if (i < list.length) rows.push(pad(take(1)));                                     // ん
-        for (let r = 0; r < 5 && i < list.length; r++) rows.push(pad(take(5)));          // が ざ だ ば ぱ
-        while (i < list.length) rows.push(pad(take(3)));                                  // きゃ …
-        return rows;
+        const cells = [];
+        let i = 0;
+        const row = pattern => {                     // pattern: 1 = next kana, 0 = empty cell
+            if (i >= list.length) return;
+            for (const p of pattern) cells.push(p && i < list.length ? list[i++] : gap);
+        };
+        for (let r = 0; r < 7; r++) row([1, 1, 1, 1, 1]);   // あ か さ た な は ま
+        row([1, 0, 1, 0, 1]);                                // や
+        row([1, 1, 1, 1, 1]);                                // ら
+        row([1, 0, 0, 0, 1]);                                // わ
+        row([1, 0, 0, 0, 0]);                                // ん
+        for (let r = 0; r < 5; r++) row([1, 1, 1, 1, 1]);   // が ざ だ ば ぱ
+        while (i < list.length) row([1, 1, 1, 0, 0]);       // きゃ …
+        return cells;
     }
 
     // --- audio -------------------------------------------------------------
