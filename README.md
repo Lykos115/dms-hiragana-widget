@@ -87,11 +87,37 @@ returns a different length every call, chops the vowel and renders ン as a
 click (a speech recogniser identified 5 of 104 kana); espeak-ng and Open
 JTalk are steadier but their consonants are weak (21 and 30 of 104).
 
+## Jlab sentences (optional)
+
+`import-jlab` pulls the anime sentences of
+[Jlab's beginner course](https://ankiweb.net/shared/info/911122782) out of
+its `.apkg`: one hiragana sentence per note, split into words, with romaji,
+the English remark, the anime it comes from and the sentence's audio clip.
+Kanji is dropped by taking the deck's hiragana field; sentences that still
+contain katakana or kanji (loanwords, names) are skipped so the output is
+pure hiragana (`--fold-katakana` rewrites katakana as hiragana instead).
+The deck has no per-word audio, so `words.json` (unique words, most common
+first, with the deck's gloss where it gives one) has none.
+
+AnkiWeb only serves the file to a logged-in account, so download it in the
+browser first, then:
+
+```sh
+python3 import-jlab ~/Downloads/Japanese_course_based_on_Tae_Kims_grammar_guide__anime.apkg
+python3 import-jlab deck.apkg --list-fields      # decks, note types, a sample note
+python3 import-jlab deck.apkg --deck ''          # all subdecks, not just "Part 1"
+```
+
+Output goes to `HiraganaWidget/data/jlab/` (`sentences.json`, `words.json`,
+`media/*.mp3`). The clips are the deck's copyrighted anime audio, so that
+directory is git-ignored. Nothing in the plugin reads it yet.
+
 ## Files
 
 | file | role |
 |---|---|
 | `gen-audio` | builds `data/audio/*.wav` from the Learn Japanese Adventure recordings, see Audio |
+| `import-jlab` | extracts hiragana sentences, words and clips from the Jlab `.apkg` into `data/jlab/` (git-ignored) |
 | `HiraganaWidget/plugin.json` | composite manifest, `widget` + `desktop` surfaces |
 | `HiraganaWidget/HiraganaDeck.qml` | loads `data/kana.json`, filters, rotates on a timer, plays the clip |
 | `HiraganaWidget/HiraganaBarWidget.qml` | `PluginComponent`: pill + popout |

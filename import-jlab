@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""Extract hiragana-only sentences, words and audio from Jlab's beginner course.
+
+The deck ("Japanese course based on Tae Kim's grammar guide & anime",
+https://ankiweb.net/shared/info/911122782) has one note per anime sentence:
+the sentence in kanji, the same sentence in space-separated hiragana, romaji,
+an English remark and one audio clip of the sentence. There is no per-word
+audio, so words come without clips.
+
+AnkiWeb only hands the .apkg to a logged-in account, so download it in a
+browser first (Download button on that page), then:
+
+    python3 import-jlab ~/Downloads/Japanese_course_based_on_Tae_Kims_grammar_guide__anime.apkg
+
+writes HiraganaWidget/data/jlab/
+    sentences.json   [{id, hiragana, words, romaji, meaning, source, audio}]
+    words.json       [{word, romaji, meaning, count}]   unique words, most common first
+    media/*.mp3      the sentence clips
+
+Kanji is dropped by taking the deck's hiragana field. Anything that still
+contains katakana or kanji (loanwords, names) is left out, so the output is
+pure hiragana; --fold-katakana rewrites katakana to hiragana instead of
+skipping the sentence. Only notes with a card in the "Part 1" subdeck are
+taken by default (--deck '' for all). --list-fields prints the note types,
+decks and one sample note.
+
+The media is copyrighted anime audio: data/jlab/ is git-ignored, never
+commit it. Handles both package formats: legacy (collection.anki2/.anki21 +
+JSON media map) and current (collection.anki21b + protobuf media map, both
+zstd; needs the `zstandard` module or the `zstd` command).
+"""
+
+import argparse
+import collections
+import html
+import json
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+OUT = HERE / "HiraganaWidget" / "data" / "jlab"
+
+F_HIRAGANA = "Jlab-Hiragana"
+F_KANJI = "Jlab-Kanji"
+F_ROMAJI = "Jlab-ListeningFront"
+F_MEANING = "RemarksBack"
+F_AUDIO = "Audio"
+F_SOURCE = "Source"
+
+SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
+TAG_RE = re.compile(r"<[^>]+>")
+HIRAGANA_RE = re.compile(r"^[ぁ-ゟー]+$")           # ぁ-ゟ plus ー
+KATAKANA_RE = re.compile(r"[ァ-ヶ]")                    # ァ-ヶ
+KANJI_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
+GLOSS_RE = re.compile(r"^([a-z][a-z\-' ]*?):\s*(.+)$")            # "jouhou: information; news"
+
+
+# --- .apkg container ---------------------------------------------------------
+
+def zstd_decompress(data: bytes) -> bytes:
+    try:
+        import zstandard
+        return zstandard.ZstdDecompressor().decompressobj().decompress(data)
+    except ImportError:
+        pass
+    if shutil.which("zstd") is None:
+        sys.exit("need the `zstandard` Python module (pip install zstandard) or the `zstd` command")
+    return subprocess.run(["zstd", "-d", "-c", "--memory=2048MB"], input=data,
+                          check=True, capture_output=True).stdout
+
+
+def read_varint(buf, pos):
+    result = shift = 0
+    while True:
+        b = buf[pos]
+        pos += 1
+        result |= (b & 0x7F) << shift
+        if not b & 0x80:
+            return result, pos
+        shift += 7
+
+
+def parse_protobuf(buf):
+    """Minimal decoder: list of (field_number, wire_type, value)."""
+    out, pos = [], 0
+    while pos < len(buf):
+        key, pos = read_varint(buf, pos)
+        field, wire = key >> 3, key & 7
+        if wire == 0:
+            v, pos = read_varint(buf, pos)
+        elif wire == 1:
+            v, pos = buf[pos:pos + 8], pos + 8
+        elif wire == 2:
+            n, pos = read_varint(buf, pos)
+            v, pos = buf[pos:pos + n], pos + n
+        elif wire == 5:
+            v, pos = buf[pos:pos + 4], pos + 4
+        else:
+            raise ValueError("unsupported protobuf wire type %d" % wire)
+        out.append((field, wire, v))
+    return out
+
+
+def package_version(zf):
+    if "meta" not in zf.namelist():
+        return 1 if "collection.anki21" not in zf.namelist() else 2
+    for field, wire, v in parse_protobuf(zf.read("meta")):
+        if field == 1 and wire == 0:
+            return v
+    return 3
+
+
+def media_map(zf, version):
+    """{ file name inside the deck: zip entry name }"""
+    raw = zf.read("media")
+    if version >= 3:
+        names = []
+        for field, wire, v in parse_protobuf(zstd_decompress(raw)):
+            if field == 1 and wire == 2:
+                names.append(next((x[2].decode("utf-8") for x in parse_protobuf(v) if x[0] == 1), None))
+        return {name: str(i) for i, name in enumerate(names) if name}
+    return {name: idx for idx, name in json.loads(raw.decode("utf-8")).items()}
+
+
+def extract_media(zf, version, entry, dest: Path):
+    data = zf.read(entry)
+    if version >= 3:
+        data = zstd_decompress(data)
+    dest.write_bytes(data)
+
+
+def open_collection(zf, version, tmpdir):
+    names = zf.namelist()
+    if "collection.anki21b" in names:
+        data = zstd_decompress(zf.read("collection.anki21b"))
+    elif "collection.anki21" in names:
+        data = zf.read("collection.anki21")
+    elif "collection.anki2" in names:
+        data = zf.read("collection.anki2")
+    else:
+        sys.exit("no collection.* file inside the package")
+    path = os.path.join(tmpdir, "collection.sqlite")
+    with open(path, "wb") as f:
+        f.write(data)
+    return sqlite3.connect(path)
+
+
+def load_decks(con):
+    decks = {}
+    try:
+        for did, name in con.execute("select id, name from decks"):
+            decks[did] = name.replace("\x1f", "::")
+        if decks:
+            return decks
+    except sqlite3.OperationalError:
+        pass
+    (raw,) = con.execute("select decks from col").fetchone()
+    return {int(did): d["name"] for did, d in json.loads(raw).items()}
+
+
+def load_notetypes(con):
+    """{ model id: (name, [field names]) }"""
+    types = {}
+    try:
+        names = dict(con.execute("select id, name from notetypes"))
+        for ntid, name in names.items():
+            fields = [f for (f,) in con.execute("select name from fields where ntid = ? order by ord", (ntid,))]
+            types[ntid] = (name, fields)
+        if types:
+            return types
+    except sqlite3.OperationalError:
+        pass
+    (raw,) = con.execute("select models from col").fetchone()
+    for mid, m in json.loads(raw).items():
+        types[int(mid)] = (m["name"], [f["name"] for f in sorted(m["flds"], key=lambda f: f["ord"])])
+    return types
+
+
+# --- text ----------------------------------------------------------------------
+
+def clean(s: str) -> str:
+    s = SOUND_RE.sub("", s)
+    s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
+    s = TAG_RE.sub("", s)
+    s = html.unescape(s).replace("\xa0", " ")
+    return "\n".join(" ".join(line.split()) for line in s.split("\n")).strip()
+
+
+def fold_katakana(s: str) -> str:
+    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
+
+
+def split_remark(remark: str):
+    """RemarksBack = translation line, then 'romaji: meaning' gloss lines."""
+    lines = [l for l in clean(remark).split("\n") if l]
+    meaning, glosses = "", {}
+    for line in lines:
+        m = GLOSS_RE.match(line)
+        if m:
+            glosses.setdefault(m.group(1).strip(), m.group(2).strip())
+        elif not meaning:
+            meaning = line
+    return meaning, glosses
+
+
+# --- main ---------------------------------------------------------------------------
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("apkg", type=Path)
+    ap.add_argument("--out", type=Path, default=OUT, help="output directory (default HiraganaWidget/data/jlab)")
+    ap.add_argument("--deck", default="Part 1", help="substring of the subdeck to take notes from ('' = all)")
+    ap.add_argument("--fold-katakana", action="store_true",
+                    help="rewrite katakana as hiragana instead of skipping those sentences")
+    ap.add_argument("--limit", type=int, default=0, help="stop after N sentences (deck order)")
+    ap.add_argument("--no-media", action="store_true", help="do not copy the audio clips")
+    ap.add_argument("--list-fields", action="store_true", help="print decks, note types and a sample note, then exit")
+    args = ap.parse_args()
+
+    if not args.apkg.is_file():
+        sys.exit(f"{args.apkg}: not found. Download the deck from "
+                 "https://ankiweb.net/shared/info/911122782 (needs an AnkiWeb login) first.")
+    zf = zipfile.ZipFile(args.apkg)
+    version = package_version(zf)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        con = open_collection(zf, version, tmp)
+        decks = load_decks(con)
+        types = load_notetypes(con)
+
+        rows = con.execute(
+            "select n.id, n.mid, n.flds, min(c.due) from notes n join cards c on c.nid = n.id "
+            "group by n.id order by min(c.due), n.id").fetchall()
+        if args.deck:
+            wanted = {did for did, name in decks.items() if args.deck.lower() in name.lower()}
+            if not wanted:
+                sys.exit("no deck matches %r; decks: %s" % (args.deck, ", ".join(sorted(decks.values()))))
+            note_decks = collections.defaultdict(set)
+            for nid, did in con.execute("select nid, did from cards"):
+                note_decks[nid].add(did)
+            rows = [r for r in rows if note_decks[r[0]] & wanted]
+
+        if args.list_fields:
+            print("package format version:", version)
+            print("decks:")
+            for n in sorted(decks.values()):
+                print("  ", n)
+            for name, fields in types.values():
+                print("note type %r: %s" % (name, ", ".join(fields)))
+            if rows:
+                nid, mid, flds, _ = rows[0]
+                print("\nsample note (deck order first):")
+                for name, val in zip(types[mid][1], flds.split("\x1f")):
+                    if val.strip():
+                        print("  %-24s %s" % (name, val[:200].replace("\n", " ")))
+            return 0
+
+        media = {} if args.no_media else media_map(zf, version)
+        out_media = args.out / "media"
+        out_media.mkdir(parents=True, exist_ok=True)
+
+        sentences, seen = [], set()
+        words = {}                       # hiragana word -> {romaji, meaning, count}
+        skipped = collections.Counter()
+        for nid, mid, flds, _ in rows:
+            _, fields = types.get(mid, ("?", []))
+            vals = dict(zip(fields, flds.split("\x1f")))
+            if F_HIRAGANA not in vals:
+                skipped["other note type"] += 1
+                continue
+            hira = clean(vals[F_HIRAGANA])
+            if args.fold_katakana:
+                hira = fold_katakana(hira)
+            if not hira:
+                skipped["empty"] += 1
+                continue
+            if KANJI_RE.search(hira):
+                skipped["kanji"] += 1
+                continue
+            if KATAKANA_RE.search(hira):
+                skipped["katakana"] += 1
+                continue
+            if hira in seen:
+                skipped["duplicate"] += 1
+                continue
+            seen.add(hira)
+
+            romaji = clean(vals.get(F_ROMAJI, "")).lower()
+            meaning, glosses = split_remark(vals.get(F_MEANING, ""))
+            hira_words = hira.split()
+            romaji_words = romaji.split()
+            if len(romaji_words) != len(hira_words):
+                romaji_words = [""] * len(hira_words)
+
+            sound = SOUND_RE.search(vals.get(F_AUDIO, "") or "")
+            audio = ""
+            if sound and not args.no_media:
+                entry = media.get(sound.group(1))
+                if entry is None:
+                    skipped["clip missing from package"] += 1
+                else:
+                    dest = out_media / os.path.basename(sound.group(1))
+                    if not dest.exists():
+                        extract_media(zf, version, entry, dest)
+                    audio = "media/" + dest.name
+
+            sentences.append({
+                "id": nid,
+                "hiragana": hira,
+                "words": hira_words,
+                "romaji": romaji,
+                "meaning": meaning,
+                "source": clean(vals.get(F_SOURCE, "")),
+                "audio": audio,
+            })
+            for w, r in zip(hira_words, romaji_words):
+                if not HIRAGANA_RE.match(w):
+                    continue
+                entry = words.setdefault(w, {"word": w, "romaji": r, "meaning": "", "count": 0})
+                entry["count"] += 1
+                if not entry["meaning"] and r in glosses:
+                    entry["meaning"] = glosses[r]
+            if args.limit and len(sentences) >= args.limit:
+                break
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    (args.out / "sentences.json").write_text(json.dumps(sentences, ensure_ascii=False, indent=1), encoding="utf-8")
+    word_list = sorted(words.values(), key=lambda w: (-w["count"], w["word"]))
+    (args.out / "words.json").write_text(json.dumps(word_list, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    with_audio = sum(1 for s in sentences if s["audio"])
+    print(f"{len(sentences)} sentences ({with_audio} with audio), {len(word_list)} unique words -> {args.out}")
+    if skipped:
+        print("skipped: " + ", ".join(f"{n} {why}" for why, n in skipped.most_common()))
+    if sentences:
+        s = sentences[0]
+        print(f"first: {s['hiragana']} / {s['romaji']} / {s['meaning']} / {s['audio']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
