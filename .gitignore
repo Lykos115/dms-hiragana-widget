@@ -1,4 +1,4 @@
 # Jlab deck import (copyrighted anime audio, see import-jlab)
-HiraganaWidget/data/jlab/
+JlabWidget/data/jlab/
 .venv/
 __pycache__/

@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""Extract hiragana-only sentences, words and audio from Jlab's beginner course.
+"""Extract the sentences, words and audio of Jlab's beginner course.
 
 The deck ("Japanese course based on Tae Kim's grammar guide & anime",
 https://ankiweb.net/shared/info/911122782) has one note per anime sentence:
-the sentence in kanji, the same sentence in space-separated hiragana, romaji,
-an English remark and one audio clip of the sentence. There is no per-word
-audio, so words come without clips.
+the sentence as written (kanji and kana), the same sentence in space-separated
+hiragana, romaji, an English remark and one audio clip of the sentence. There
+is no per-word audio, so words come without clips.
 
 AnkiWeb only hands the .apkg to a logged-in account, so download it in a
 browser first (Download button on that page), then:
 
     python3 import-jlab ~/Downloads/Japanese_course_based_on_Tae_Kims_grammar_guide__anime.apkg
 
-writes HiraganaWidget/data/jlab/
-    sentences.json   [{id, hiragana, words, romaji, meaning, source, audio}]
+writes JlabWidget/data/jlab/
+    sentences.json   [{id, sentence, hiragana, words, romaji, meaning, source, audio}]
     words.json       [{word, romaji, meaning, count}]   unique words, most common first
     media/*.mp3      the sentence clips
 
-Kanji is dropped by taking the deck's hiragana field. Anything that still
-contains katakana or kanji (loanwords, names) is left out, so the output is
-pure hiragana; --fold-katakana rewrites katakana to hiragana instead of
-skipping the sentence. Only notes with a card in the "Part 1" subdeck are
-taken by default (--deck '' for all). --list-fields prints the note types,
-decks and one sample note.
+Only notes with a card in the "Part 1" subdeck are taken by default
+(--deck '' for all). --list-fields prints the note types, decks and one
+sample note.
 
 The media is copyrighted anime audio: data/jlab/ is git-ignored, never
 commit it. Handles both package formats: legacy (collection.anki2/.anki21 +
@@ -45,7 +42,7 @@ import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-OUT = HERE / "HiraganaWidget" / "data" / "jlab"
+OUT = HERE / "JlabWidget" / "data" / "jlab"
 
 F_HIRAGANA = "Jlab-Hiragana"
 F_KANJI = "Jlab-Kanji"
@@ -56,9 +53,7 @@ F_SOURCE = "Source"
 
 SOUND_RE = re.compile(r"\[sound:([^\]]+)\]")
 TAG_RE = re.compile(r"<[^>]+>")
-HIRAGANA_RE = re.compile(r"^[ぁ-ゟー]+$")           # ぁ-ゟ plus ー
-KATAKANA_RE = re.compile(r"[ァ-ヶ]")                    # ァ-ヶ
-KANJI_RE = re.compile(r"[㐀-䶿一-鿿豈-﫿]")
+JAPANESE_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")   # kana or kanji
 GLOSS_RE = re.compile(r"^([a-z][a-z\-' ]*?):\s*(.+)$")            # "jouhou: information; news"
 
 
@@ -193,10 +188,6 @@ def clean(s: str) -> str:
     return "\n".join(" ".join(line.split()) for line in s.split("\n")).strip()
 
 
-def fold_katakana(s: str) -> str:
-    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
-
-
 def split_remark(remark: str):
     """RemarksBack = translation line, then 'romaji: meaning' gloss lines."""
     lines = [l for l in clean(remark).split("\n") if l]
@@ -215,10 +206,8 @@ def split_remark(remark: str):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("apkg", type=Path)
-    ap.add_argument("--out", type=Path, default=OUT, help="output directory (default HiraganaWidget/data/jlab)")
+    ap.add_argument("--out", type=Path, default=OUT, help="output directory (default JlabWidget/data/jlab)")
     ap.add_argument("--deck", default="Part 1", help="substring of the subdeck to take notes from ('' = all)")
-    ap.add_argument("--fold-katakana", action="store_true",
-                    help="rewrite katakana as hiragana instead of skipping those sentences")
     ap.add_argument("--limit", type=int, default=0, help="stop after N sentences (deck order)")
     ap.add_argument("--no-media", action="store_true", help="do not copy the audio clips")
     ap.add_argument("--list-fields", action="store_true", help="print decks, note types and a sample note, then exit")
@@ -276,21 +265,14 @@ def main() -> int:
                 skipped["other note type"] += 1
                 continue
             hira = clean(vals[F_HIRAGANA])
-            if args.fold_katakana:
-                hira = fold_katakana(hira)
+            sentence = clean(vals.get(F_KANJI, "")) or hira.replace(" ", "")
             if not hira:
                 skipped["empty"] += 1
                 continue
-            if KANJI_RE.search(hira):
-                skipped["kanji"] += 1
-                continue
-            if KATAKANA_RE.search(hira):
-                skipped["katakana"] += 1
-                continue
-            if hira in seen:
+            if sentence in seen:
                 skipped["duplicate"] += 1
                 continue
-            seen.add(hira)
+            seen.add(sentence)
 
             romaji = clean(vals.get(F_ROMAJI, "")).lower()
             meaning, glosses = split_remark(vals.get(F_MEANING, ""))
@@ -313,6 +295,7 @@ def main() -> int:
 
             sentences.append({
                 "id": nid,
+                "sentence": sentence,
                 "hiragana": hira,
                 "words": hira_words,
                 "romaji": romaji,
@@ -321,7 +304,7 @@ def main() -> int:
                 "audio": audio,
             })
             for w, r in zip(hira_words, romaji_words):
-                if not HIRAGANA_RE.match(w):
+                if not JAPANESE_RE.search(w):
                     continue
                 entry = words.setdefault(w, {"word": w, "romaji": r, "meaning": "", "count": 0})
                 entry["count"] += 1
@@ -341,7 +324,7 @@ def main() -> int:
         print("skipped: " + ", ".join(f"{n} {why}" for why, n in skipped.most_common()))
     if sentences:
         s = sentences[0]
-        print(f"first: {s['hiragana']} / {s['romaji']} / {s['meaning']} / {s['audio']}")
+        print(f"first: {s['sentence']} / {s['hiragana']} / {s['meaning']} / {s['audio']}")
     return 0
 
 

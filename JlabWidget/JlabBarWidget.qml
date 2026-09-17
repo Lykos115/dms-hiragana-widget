@@ -4,20 +4,21 @@ import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
 
-// Bar pill: shows the current kana (optionally with its romaji).
+// Bar pill: shows the current sentence (optionally with its hiragana reading).
 // Left click (or hover, if the bar has "open popouts on hover" enabled) opens a
-// card with the kana, its romaji and Play / Next buttons.
-// Right click skips to the next kana.
+// card with the sentence, its reading, romaji, meaning and Play / Next buttons.
+// Right click skips to the next sentence.
 PluginComponent {
     id: root
 
-    layerNamespacePlugin: "hiragana-widget"
+    layerNamespacePlugin: "jlab-widget"
 
-    readonly property bool barRomaji: pluginData.barRomaji ?? true
+    readonly property bool barReading: pluginData.barReading ?? false
+    readonly property real barMaxWidth: pluginData.barMaxWidth ?? 360
     readonly property string fontFamily: (pluginData.fontFamily ?? "") !== "" ? pluginData.fontFamily : Theme.fontFamily
-    readonly property real popoutMainSize: pluginData.popoutMainSize ?? 96
+    readonly property real popoutMainSize: pluginData.popoutMainSize ?? 28
 
-    HiraganaDeck {
+    JlabDeck {
         id: deck
         settings: root.pluginData
     }
@@ -31,17 +32,22 @@ PluginComponent {
             StyledText {
                 text: deck.main
                 font.family: root.fontFamily
-                font.pixelSize: Theme.fontSizeXLarge
+                font.pixelSize: Theme.fontSizeLarge
                 font.weight: Font.Bold
                 color: Theme.primary
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, root.barMaxWidth)
                 anchors.verticalCenter: parent.verticalCenter
             }
 
             StyledText {
-                visible: root.barRomaji && deck.reading !== ""
+                visible: root.barReading && deck.reading !== ""
                 text: deck.reading
+                font.family: root.fontFamily
                 font.pixelSize: Theme.fontSizeSmall
                 color: Theme.surfaceVariantText
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, root.barMaxWidth)
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
@@ -54,9 +60,11 @@ PluginComponent {
             StyledText {
                 text: deck.main
                 font.family: root.fontFamily
-                font.pixelSize: Theme.fontSizeLarge
+                font.pixelSize: Theme.fontSizeMedium
                 font.weight: Font.Bold
                 color: Theme.primary
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, 120)
                 anchors.horizontalCenter: parent.horizontalCenter
                 horizontalAlignment: Text.AlignHCenter
             }
@@ -66,7 +74,7 @@ PluginComponent {
     popoutContent: Component {
         PopoutComponent {
             id: card
-            headerText: deck.tag !== "" ? deck.tag.toUpperCase() : "KANA"
+            headerText: deck.source !== "" ? deck.source.toUpperCase() : "JLAB"
             showCloseButton: true
 
             Column {
@@ -83,15 +91,38 @@ PluginComponent {
                     font.pixelSize: root.popoutMainSize
                     font.weight: Font.Bold
                     color: Theme.surfaceText
+                    wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                 }
 
                 StyledText {
-                    visible: deck.reading !== ""
+                    visible: deck.reading !== "" && deck.reading.replace(/ /g, "") !== deck.main
                     width: parent.width - parent.leftPadding - parent.rightPadding
                     text: deck.reading
-                    font.pixelSize: Theme.fontSizeXLarge
+                    font.family: root.fontFamily
+                    font.pixelSize: Theme.fontSizeLarge
                     color: Theme.primary
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                StyledText {
+                    visible: deck.romaji !== ""
+                    width: parent.width - parent.leftPadding - parent.rightPadding
+                    text: deck.romaji
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceVariantText
+                    wrapMode: Text.Wrap
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                StyledText {
+                    visible: deck.meaning !== ""
+                    width: parent.width - parent.leftPadding - parent.rightPadding
+                    text: deck.meaning
+                    font.pixelSize: Theme.fontSizeMedium
+                    color: Theme.surfaceText
+                    wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                 }
 
@@ -165,5 +196,5 @@ PluginComponent {
         }
     }
 
-    popoutWidth: pluginData.popoutWidth ?? 280
+    popoutWidth: pluginData.popoutWidth ?? 380
 }

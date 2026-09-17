@@ -1,0 +1,17 @@
+{
+    "id": "jlabWidget",
+    "name": "Jlab sentences",
+    "description": "Rotates through the anime sentences of Jlab's beginner course with their hiragana reading and English meaning. Bar pill with a popout card, and a desktop widget. Plays the sentence's clip from the deck.",
+    "version": "0.2.0",
+    "author": "lykos",
+    "type": "composite",
+    "capabilities": ["dankbar-widget", "desktop-widget", "japanese", "study"],
+    "icon": "translate",
+    "components": {
+        "widget": "./JlabBarWidget.qml",
+        "desktop": "./JlabDesktopWidget.qml"
+    },
+    "settings": "./JlabSettings.qml",
+    "requires_dms": ">=1.5.0",
+    "permissions": ["settings_read", "settings_write"]
+}
