@@ -5,7 +5,7 @@ import qs.Modules.Plugins
 // Desktop widget: DMS draws it on the bottom layer (above the wallpaper,
 // below windows) and remembers position and size. Move/resize it from
 // Settings → Desktop Widgets (right-click drag). Left click = next kana,
-// middle click = speak it.
+// middle click = play it.
 DesktopPluginComponent {
     id: root
 

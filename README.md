@@ -10,7 +10,7 @@ Shell itself. One plugin, two surfaces (DMS ≥ 1.5.0 composite plugin):
   in the bar settings the card opens on hover.
 * **Desktop widget** — text on the wallpaper layer, fixed where you put it.
   Right-click drag moves it, the corner handle resizes it, left click skips
-  to the next kana, middle click speaks it.
+  to the next kana, middle click plays it.
 
 Both surfaces share the settings. By default every instance (all monitors,
 bar and desktop) shows the same kana; turn off *Same kana everywhere* for
@@ -42,65 +42,63 @@ Reload after editing the QML: `dms ipc call plugins reload hiraganaWidget`.
 | section | keys |
 |---|---|
 | Content | hiragana, katakana too, voiced kana, combination kana, **seconds per kana** (3–600), random / gojūon order, same kana everywhere, Japanese font |
-| Audio | speak automatically, text-to-speech command |
+| Audio | play automatically, audio player command |
 | Bar pill & popout | romaji in the pill, popout width, popout kana size |
 | Desktop widget | kana size, show romaji, show set tag, text outline, background opacity |
 
 ## Audio
 
-*Play* in the popout (or middle click on the desktop widget) says the kana
-with the *Text-to-speech command*, `{text}` replaced by the kana. Default is
-`espeak-ng -v ja -s 110 {text}` — `sudo pacman -S espeak-ng`. Its Japanese
-voice is robotic but the single syllables are clear.
-
-For a natural voice use [Piper](https://github.com/OHF-Voice/piper1-gpl)
-(the maintained successor of rhasspy/piper) with its Japanese voice:
+*Play* in the popout (or middle click on the desktop widget) plays a recording
+of the kana from `HiraganaWidget/data/audio/<romaji>.wav`. The recordings are
+by a native speaker, from
+[Learn Japanese Adventure](https://www.learn-japanese-adventure.com/learn-to-speak-japanese-online.html)
+(the kana sound files on that page). They remain that site's property and are
+bundled here with credit only. `gen-audio` downloads them, trims the silence,
+levels them all to the same loudness and writes the WAVs; one clip per romaji
+reading, shared by hiragana and katakana. To re-fetch:
 
 ```sh
-pipx install "piper-tts[http,ja]"       # ja = Japanese phonemizer (OpenJTalk), http = server
-install -Dm755 ~/dms-hiragana-widget/say-ja ~/.local/bin/say-ja
-say-ja setup                            # downloads the ja_JA-hi_fi_captain-medium voice
-say-ja テスト                            # try it
+python3 -m venv .venv && .venv/bin/pip install numpy    # plus ffmpeg and curl on PATH
+.venv/bin/python gen-audio
 ```
 
-Already installed without the `ja` extra (error `No module named
-'pyopenjtalk'`)? Add it: `pipx inject piper-tts pyopenjtalk-plus`.
+The player is picked at run time: the first of `pw-play`, `paplay`, `mpv`,
+`ffplay` on PATH (all of them drain the buffer before exiting, so short clips
+are not cut). *Audio player command* overrides that, e.g. `pw-play {file}`;
+it is split on whitespace and run without a shell, so `{file}` must be a
+whole argument.
 
-and set the *Text-to-speech command* to `say-ja {text}`. `say-ja` plays the clip
-with `pw-play`, `paplay`, `mpv` or `ffplay`, whichever exists.
-`PIPER_SPEAKER=male` and `PIPER_LENGTH_SCALE=1.2` (slower) can be set in
-`~/.config/environment.d/say-ja.conf`. The CLI reloads the model on
-every call, about a second of delay; for instant playback run `say-ja server`
-once, e.g. from niri's `spawn-at-startup`, and `say-ja` uses it automatically.
-`say-ja setup` / `say-ja server` run Piper's modules with the Python that owns
-the `piper` command, so `python3 -m piper ...` is never needed (with pipx it
-fails: the system Python cannot see the package). `PIPER_VOICE`,
-`PIPER_DATA_DIR` and `PIPER_PORT` override the defaults.
-
-No sound from the widget? `say-ja` adds `~/.local/bin` to its own PATH and
-logs every call to `~/.cache/say-ja.log`, so: (1) `say-ja テスト` in a
-terminal must work first; (2) click *Play* in the popout (or middle-click the
-desktop widget), *Speak automatically* is off by default; (3) if the log stays
-empty DMS did not find the script, set the command to the full path
-`/home/YOU/.local/bin/say-ja {text}`; (4) otherwise the log says what failed.
-The command is split on whitespace and run without a shell, so `{text}` must
-be a whole argument.
-
-*Speak automatically* says every new kana as it appears. Only the instance
-that picked the kana speaks, so with *Same kana everywhere* on you hear it
+*Play automatically* plays every new kana as it appears. Only the instance
+that picked the kana plays it, so with *Same kana everywhere* on you hear it
 once even with several pills and widgets.
+
+No sound? (1) `pw-play ~/dms-hiragana-widget/HiraganaWidget/data/audio/ka.wav`
+in a terminal must work. (2) Press *Play* and read `~/.cache/hiragana-widget.log`:
+every attempt logs the clip path, the player it picked and any error. (3) If
+the log stays empty DMS is running an old copy of the plugin: `install.sh`
+symlinks the clone so pulls apply directly, and `dms kill; dms run -d`
+restarts the shell (`dms ipc call plugins reload hiraganaWidget` keeps
+cached QML). (4) A player that only lives in `~/.local/bin` is not on DMS's
+PATH: set *Audio player command* to its full path.
+
+Why recordings and not text-to-speech: no offline engine says a lone mora
+well. Piper's Japanese voice is trained on sentences and on a single kana
+returns a different length every call, chops the vowel and renders ン as a
+click (a speech recogniser identified 5 of 104 kana); espeak-ng and Open
+JTalk are steadier but their consonants are weak (21 and 30 of 104).
 
 ## Files
 
 | file | role |
 |---|---|
-| `say-ja` | Piper text-to-speech wrapper, see Audio |
+| `gen-audio` | builds `data/audio/*.wav` from the Learn Japanese Adventure recordings, see Audio |
 | `HiraganaWidget/plugin.json` | composite manifest, `widget` + `desktop` surfaces |
-| `HiraganaWidget/HiraganaDeck.qml` | loads `data/kana.json`, filters, rotates on a timer, speaks |
+| `HiraganaWidget/HiraganaDeck.qml` | loads `data/kana.json`, filters, rotates on a timer, plays the clip |
 | `HiraganaWidget/HiraganaBarWidget.qml` | `PluginComponent`: pill + popout |
 | `HiraganaWidget/HiraganaDesktopWidget.qml` | `DesktopPluginComponent` |
 | `HiraganaWidget/HiraganaSettings.qml` | settings UI (`PluginSettings`) |
 | `HiraganaWidget/data/kana.json` | hiragana + katakana with romaji, in gojūon order |
+| `HiraganaWidget/data/audio/` | one clip per romaji reading (hiragana and katakana share them), recordings © Learn Japanese Adventure |
 
 Status: written against the DMS `master` plugin API and syntax-checked with
 `qmllint`, not yet run in a live DMS session. If DMS logs an error on load,

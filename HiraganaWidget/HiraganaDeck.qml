@@ -5,7 +5,7 @@ import qs.Services
 
 // Non-visual helper shared by the bar widget and the desktop widget.
 // Loads data/kana.json, keeps the hiragana (plus katakana if enabled),
-// rotates on a timer and speaks the kana on request.
+// rotates on a timer and plays the kana's clip on request.
 Item {
     id: deck
     visible: false
@@ -25,7 +25,9 @@ Item {
     // keep every bar pill / desktop widget (all monitors) on the same kana
     readonly property bool syncInstances: settings.syncInstances ?? true
     readonly property bool autoPlay: settings.autoPlay ?? false
-    readonly property string ttsCommand: (settings.ttsCommand ?? "") !== "" ? settings.ttsCommand : "espeak-ng -v ja -s 110 {text}"
+    // Audio: recorded clips in data/audio/<romaji>.wav (see gen-audio) played
+    // with playerCommand; empty = pick pw-play / paplay / mpv / ffplay at run time.
+    readonly property string playerCommand: String(settings.playerCommand ?? "").trim()
     readonly property string pluginId: "hiraganaWidget"
     property double lastStamp: 0
 
@@ -153,14 +155,32 @@ Item {
     }
 
     // --- audio -------------------------------------------------------------
-    // The command is split on whitespace, no shell involved; "{text}" must be
-    // a whole argument and is replaced with the kana.
+    // The command is split on whitespace, no shell involved; "{file}" must be
+    // a whole argument and is replaced with the clip path.
     function argv(cmd, key, value) {
         return cmd.split(/\s+/).filter(t => t.length > 0).map(t => t === key ? value : t);
     }
 
+    readonly property string clipFile: dataDir + "/audio/" + reading + ".wav"
+
+    // first player found on PATH; each one drains the buffer before exiting,
+    // so a 0.4 s clip is not cut short. Every call is logged to
+    // ~/.cache/hiragana-widget.log because stderr goes nowhere under DMS.
+    readonly property string autoPlayer:
+        'f="$1"; log="${XDG_CACHE_HOME:-$HOME/.cache}/hiragana-widget.log"; ' +
+        'mkdir -p "$(dirname "$log")"; exec 2>>"$log"; ' +
+        'echo "$(date "+%F %T") play $f (PATH=$PATH)" >&2; ' +
+        '[ -f "$f" ] || { echo "  clip not found" >&2; exit 1; }; ' +
+        'for p in pw-play paplay; do command -v "$p" >/dev/null && { echo "  using $p" >&2; exec "$p" "$f"; }; done; ' +
+        'command -v mpv    >/dev/null && { echo "  using mpv" >&2; exec mpv --no-video --really-quiet "$f"; }; ' +
+        'command -v ffplay >/dev/null && { echo "  using ffplay" >&2; exec ffplay -nodisp -autoexit -loglevel quiet -af apad=pad_dur=0.3 "$f"; }; ' +
+        'echo "  no audio player found (pw-play, paplay, mpv, ffplay)" >&2; exit 1'
+
     function play() {
         if (!hasAudio) return;
-        Quickshell.execDetached(argv(ttsCommand, "{text}", main));
+        if (playerCommand !== "")
+            Quickshell.execDetached(argv(playerCommand, "{file}", clipFile));
+        else
+            Quickshell.execDetached(["sh", "-c", autoPlayer, "sh", clipFile]);
     }
 }

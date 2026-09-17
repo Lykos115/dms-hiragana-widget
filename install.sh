@@ -13,9 +13,6 @@ else
     ln -sfn "$DIR/HiraganaWidget" "$DEST/HiraganaWidget"
     echo "linked $DEST/HiraganaWidget -> $DIR/HiraganaWidget"
 fi
-if command -v dms >/dev/null 2>&1; then
-    dms ipc call plugins scan 2>/dev/null || true
-fi
 echo "Now: DMS Settings → Plugins → Scan → enable 'Hiragana'"
 echo "     bar pill:       Settings → DankBar → layout → add hiraganaWidget"
 echo "     desktop widget: Settings → Desktop Widgets → add it, right-click drag to move/resize"
